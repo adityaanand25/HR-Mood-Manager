@@ -1,65 +1,81 @@
-# HR Mood Manager - Frontend
+# HR Mood Manager Frontend
 
-A beautiful React + TypeScript frontend for the HR Mood Manager application.
+A modern, responsive Next.js frontend for the HR Mood Manager system that provides real-time emotion detection, mood tracking, and comprehensive analytics.
 
 ## Features
 
-- 🎨 Beautiful, modern UI with gradient backgrounds
-- 😊 6 mood options with emojis (Happy, Neutral, Sad, Angry, Anxious, Excited)
-- 📊 Intensity slider (1-10 scale)
-- 📝 Optional notes section
-- ✅ Real-time feedback on submission
-- 📱 Responsive design for mobile and desktop
+### 🔐 Authentication System
+- **Secure Login**: User authentication with role-based access control
+- **Role Management**: Separate interfaces for Employees and HR personnel
+- **Demo Accounts**: Quick access with pre-configured demo credentials
 
-## Setup Instructions
+### 📸 Real-time Emotion Detection
+- **Webcam Integration**: Live camera feed for emotion capture
+- **AI-Powered Analysis**: Real-time emotion detection using TensorFlow model
+- **Confidence Scoring**: Detailed confidence levels for each emotion
+- **Multiple Predictions**: Shows all emotion probabilities, not just the top result
+- **Auto-save**: Automatic saving of emotion data to database
 
-1. **Install dependencies:**
+### 📊 Comprehensive Analytics
+- **Mood Statistics**: Detailed charts and graphs showing emotion patterns
+- **Distribution Charts**: Pie charts showing emotion distribution over time
+- **Trend Analysis**: Bar charts comparing detection counts and confidence levels
+- **Summary Metrics**: Key performance indicators and statistics
+
+### 📝 Mood History Management
+- **Historical Records**: Complete history of all mood detections
+- **Filtering Options**: Filter by user (HR view) or personal history (employee view)
+- **Detailed Information**: Timestamps, confidence levels, detection methods
+- **Real-time Updates**: Live updates when new emotions are detected
+
+### 🏢 HR Management Panel
+- **Manual Mood Entry**: HR can manually log employee mood observations
+- **Employee Selection**: Dropdown to select from all registered employees
+- **Mood Categories**: Comprehensive list of mood options
+- **Intensity Ratings**: 1-10 scale for mood intensity
+- **Notes System**: Additional context and observations
+- **Recent Entries**: View of recently added manual mood entries
+
+### 🎨 Modern UI/UX
+- **Responsive Design**: Works seamlessly on desktop, tablet, and mobile
+- **Clean Interface**: Intuitive navigation with clear visual hierarchy
+- **Interactive Components**: Hover effects, smooth transitions, loading states
+- **Accessibility**: Screen reader friendly with proper ARIA labels
+- **Real-time Feedback**: Immediate visual feedback for all user actions
+
+## Demo Accounts
+
+### Employee Demo
+- **User ID**: EMP001
+- **Password**: emp123
+
+### HR Demo
+- **User ID**: HR001
+- **Password**: hr123
+
+## Quick Start
+
+1. **Start the backend** (from main directory):
    ```bash
-   cd frontend
-   npm install
+   .\.venv\Scripts\Activate.ps1
+   python api_server.py
    ```
 
-2. **Run the development server:**
+2. **Start the frontend**:
    ```bash
+   cd frontend
    npm run dev
    ```
 
-3. **Open in browser:**
-   Navigate to `http://localhost:3000`
+3. **Access the application**:
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:8000
 
-## Build for Production
+## Technology Stack
 
-```bash
-npm run build
-```
-
-## Technologies Used
-
-- React 18
-- TypeScript
-- Vite (Build tool)
-- CSS3 (Custom styling)
-
-## Project Structure
-
-```
-frontend/
-├── src/
-│   ├── components/
-│   │   ├── MoodSelector.tsx      # Main mood selection component
-│   │   └── MoodSelector.css      # Styling for mood selector
-│   ├── types/
-│   │   └── mood.ts               # TypeScript type definitions
-│   ├── App.tsx                   # Main app component
-│   ├── App.css                   # App styling
-│   ├── main.tsx                  # Entry point
-│   └── index.css                 # Global styles
-├── index.html
-├── package.json
-├── tsconfig.json
-└── vite.config.ts
-```
-
-## Integration with Backend
-
-To connect to your Python emotion detection backend, update the proxy configuration in `vite.config.ts` to point to your Flask/FastAPI server.
+- **Next.js 14** with App Router
+- **TypeScript** for type safety
+- **Tailwind CSS** for styling
+- **Recharts** for data visualization
+- **React Webcam** for camera integration
+- **Axios** for API calls
