@@ -1,5 +1,5 @@
 """
-FastAPI Backend for HR Mood Manager
+FastAPI Backend for Employee Mood Analyzer
 Provides emotion detection API endpoint using the trained model
 """
 
@@ -16,6 +16,10 @@ from PIL import Image
 import logging
 import database  # Import our database module
 
+# Configure logging FIRST
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # RAG System imports
 import chromadb
 
@@ -29,15 +33,17 @@ try:
 except Exception:
     pass
 
-from sentence_transformers import SentenceTransformer
+# Optional import - SentenceTransformer is heavy, import only if needed
+SentenceTransformer = None
+try:
+    from sentence_transformers import SentenceTransformer
+except Exception as e:
+    logger.warning(f"sentence-transformers not available ({type(e).__name__}), RAG embeddings will be disabled")
+
 import warnings
 warnings.filterwarnings('ignore')
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-app = FastAPI(title="HR Mood Manager API", version="1.0.0")
+app = FastAPI(title="Employee Mood Analyzer API", version="1.0.0")
 
 # Configure CORS to allow requests from frontend
 app.add_middleware(
@@ -58,14 +64,30 @@ class EmotionRAG:
     def __init__(self):
         try:
             logger.info("🤖 Loading RAG AI model...")
-            self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
+            # Try to load the embedder, but don't fail if offline
+            try:
+                if SentenceTransformer is not None:
+                    self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
+                    logger.info("✅ Sentence Transformer loaded from HuggingFace")
+                else:
+                    logger.warning("⚠️  SentenceTransformer not available")
+                    self.embedder = None
+            except Exception as e:
+                logger.warning(f"⚠️  HuggingFace download failed: {e}")
+                logger.info("📦 Using cached embedder or basic similarity search...")
+                self.embedder = None
+            
+            # Initialize ChromaDB for vector storage
             self.chroma = chromadb.Client()
             self.collection = None
-            logger.info("✅ RAG AI model ready")
+            self.records_cache = []
+            
+            logger.info("✅ RAG system initialized (will use rule-based insights if needed)")
         except Exception as e:
             logger.error(f"❌ Error initializing RAG: {e}")
             self.embedder = None
             self.chroma = None
+            self.records_cache = []
     
     def build_from_database(self) -> bool:
         """Build vector database from mood records or cache records if vector DB unavailable"""
@@ -75,13 +97,12 @@ class EmotionRAG:
             
             if not mood_records:
                 logger.info("No mood records found for RAG")
+                self.records_cache = []
                 return False
             
             # Cache records for rule-based insights
-            try:
-                self.records_cache = mood_records
-            except Exception:
-                self.records_cache = []
+            self.records_cache = mood_records
+            logger.info(f"📦 Cached {len(mood_records)} mood records for RAG")
             
             # If vector DB available, build collection
             if self.embedder and self.chroma:
@@ -93,16 +114,16 @@ class EmotionRAG:
                     pass
                 # Create new collection
                 self.collection = self.chroma.create_collection("emotions")
-            
-            # Prepare documents
-            docs = []
-            ids = []
-            metas = []
-            
-            for i, rec in enumerate(mood_records):
-                time_str = rec['timestamp'][:19].replace('T', ' ')
                 
-                text = f"""Emotion Record {i+1} at {time_str}
+                # Prepare documents
+                docs = []
+                ids = []
+                metas = []
+                
+                for i, rec in enumerate(mood_records):
+                    time_str = rec['timestamp'][:19].replace('T', ' ')
+                    
+                    text = f"""Emotion Record {i+1} at {time_str}
 Employee: {rec.get('full_name', rec['user_id'])}
 Department: {rec.get('department', 'Unknown')}
 Detected emotion: {rec['emotion']}
@@ -110,50 +131,62 @@ Confidence: {rec['confidence']:.1f}%
 Detection method: {rec.get('detection_method', 'webcam')}
 Notes: {rec.get('notes', 'No additional notes')}
 Analysis: The employee was feeling {rec['emotion']} with {rec['confidence']:.1f}% confidence."""
+                    
+                    docs.append(text)
+                    ids.append(f"rec_{i}")
+                    metas.append({
+                        'emotion': rec['emotion'],
+                        'user_id': rec['user_id'],
+                        'timestamp': rec['timestamp'],
+                        'confidence': rec['confidence'],
+                        'id': i
+                    })
                 
-                docs.append(text)
-                ids.append(f"rec_{i}")
-                metas.append({
-                    'emotion': rec['emotion'],
-                    'user_id': rec['user_id'],
-                    'timestamp': rec['timestamp'],
-                    'confidence': rec['confidence'],
-                    'id': i
-                })
-            
-            # Add to collection if available
-            if self.collection:
+                # Add to collection
                 self.collection.add(documents=docs, ids=ids, metadatas=metas)
-                logger.info(f"✅ RAG database ready with {len(docs)} records")
+                logger.info(f"✅ RAG vector database ready with {len(docs)} records")
             else:
                 logger.info("✅ RAG cache ready (rule-based insights enabled)")
+            
             return True
             
         except Exception as e:
             logger.error(f"❌ Error building RAG database: {e}")
-            return False
+            # Still return True since we have cache
+            return len(self.records_cache) > 0
     
     def query(self, question: str, user_id: str = None) -> str:
         """Query the RAG system for emotion insights; works without vector DB."""
         # Ensure data available
-        if not self.collection and not getattr(self, 'records_cache', None):
+        if not self.collection and not self.records_cache:
             if not self.build_from_database():
-                return "❌ RAG insights not available yet. No emotion data found."
+                return "❌ RAG insights not available yet. No emotion data found. Please record some emotions first."
         
         try:
             metas = []
             # If we have vector DB, use it
-            if self.collection:
-                results = self.collection.query(query_texts=[question], n_results=10)
-                if results.get('metadatas') and results['metadatas'][0]:
-                    metas = results['metadatas'][0]
-            # Fallback: derive metas from cached records
-            if not metas and getattr(self, 'records_cache', None):
+            if self.collection and self.embedder:
+                try:
+                    results = self.collection.query(query_texts=[question], n_results=10)
+                    if results.get('metadatas') and results['metadatas'][0]:
+                        metas = results['metadatas'][0]
+                except Exception as e:
+                    logger.warning(f"Vector search failed: {e}, falling back to cache")
+                    metas = []
+            
+            # Fallback: use cached records for rule-based insights
+            if not metas and self.records_cache:
                 metas = [{
                     'emotion': r['emotion'],
                     'user_id': r['user_id'],
-                    'timestamp': r['timestamp']
+                    'timestamp': r['timestamp'],
+                    'confidence': r['confidence'],
+                    'full_name': r.get('full_name', r['user_id']),
+                    'department': r.get('department', 'Unknown')
                 } for r in self.records_cache]
+            
+            if not metas:
+                return "❌ No emotion data available to query."
             
             # Filter by user if specified
             if user_id:
@@ -207,10 +240,26 @@ Analysis: The employee was feeling {rec['emotion']} with {rec['confidence']:.1f}
                     return f"Overall emotional state shows: {summary}. The dominant emotion is {most}."
                 return "No emotional data available."
             
+            elif 'struggling' in q_lower or 'concern' in q_lower or 'negative' in q_lower:
+                negative_emotions = ['sad', 'angry', 'fear', 'disgust']
+                negative_count = sum(emotion_counts.get(e, 0) for e in negative_emotions)
+                if negative_count > 0:
+                    return f"Found {negative_count} negative emotion instances. Consider reaching out to affected employees for support."
+                return "No concerning emotional patterns detected."
+            
+            elif 'team' in q_lower or 'department' in q_lower or 'organizational' in q_lower:
+                if emotion_counts:
+                    summary = ", ".join([f"{e} ({c}x)" for e, c in sorted(emotion_counts.items(), key=lambda x: x[1], reverse=True)])
+                    positive = emotion_counts.get('happy', 0) + emotion_counts.get('neutral', 0)
+                    total = sum(emotion_counts.values())
+                    positive_pct = (positive / total * 100) if total > 0 else 0
+                    return f"Team emotional health: {summary}. Overall positivity: {positive_pct:.1f}%."
+                return "No team emotional data available."
+            
             else:
                 # Generic answer
                 if emotion_counts:
-                    summary = ", ".join([f"{e} ({c}x)" for e, c in emotion_counts.items()])
+                    summary = ", ".join([f"{e} ({c}x)" for e, c in sorted(emotion_counts.items(), key=lambda x: x[1], reverse=True)])
                     dominant = max(emotion_counts, key=emotion_counts.get)
                     return f"Based on relevant emotion records: {summary}. The dominant emotion in this context is {dominant}."
                 return "No relevant emotion data found for your query."
@@ -222,31 +271,29 @@ Analysis: The employee was feeling {rec['emotion']} with {rec['confidence']:.1f}
     def get_insights(self, user_id: str = None) -> str:
         """Generate automatic insights from emotion data"""
         try:
+            # Ensure cache is populated
+            if not self.records_cache:
+                self.build_from_database()
+            
             # Get statistics from database
             if user_id:
-                stats = database.get_mood_statistics(user_id)
                 records = database.get_mood_records(user_id, limit=100)
             else:
-                stats = database.get_mood_statistics()
-                records = database.get_mood_records(limit=100)
+                records = database.get_mood_records(None, limit=100)
             
-            if not stats or not records:
-                return "No emotion data available for insights."
+            if not records:
+                return "📊 No emotion data available yet. Start by recording some emotions through the emotion detection feature."
             
             # Calculate insights
             total_records = len(records)
             emotion_counts = {}
             confidence_sum = {}
-            recent_emotions = []
             
             for record in records:
                 emotion = record['emotion']
+                confidence = record['confidence']
                 emotion_counts[emotion] = emotion_counts.get(emotion, 0) + 1
-                confidence_sum[emotion] = confidence_sum.get(emotion, 0) + record['confidence']
-                
-                # Get recent emotions (last 10)
-                if len(recent_emotions) < 10:
-                    recent_emotions.append(emotion)
+                confidence_sum[emotion] = confidence_sum.get(emotion, 0) + confidence
             
             if not emotion_counts:
                 return "No emotion data available for analysis."
@@ -260,7 +307,7 @@ Analysis: The employee was feeling {rec['emotion']} with {rec['confidence']:.1f}
 
 📊 Summary:
    • Total Records: {total_records}
-   • Most Common: {most_common} ({emotion_counts[most_common]}x, {emotion_counts[most_common]/total_records*100:.1f}%)
+   • Most Common: {most_common.capitalize()} ({emotion_counts[most_common]}x, {emotion_counts[most_common]/total_records*100:.1f}%)
    • Average Confidence: {avg_confidences[most_common]:.1f}%
 
 📈 Distribution:"""
@@ -268,14 +315,14 @@ Analysis: The employee was feeling {rec['emotion']} with {rec['confidence']:.1f}
             for emotion, count in sorted(emotion_counts.items(), key=lambda x: x[1], reverse=True):
                 pct = count/total_records*100
                 bar = "█" * min(int(pct/3), 20)
-                insights += f"\n   {emotion:12s}: {count:3d} ({pct:5.1f}%) {bar}"
+                insights += f"\n   {emotion.capitalize():12s}: {count:3d} ({pct:5.1f}%) {bar}"
             
             # Add analysis
             insights += "\n\n💡 Analysis:\n"
             
-            if most_common in ['happy', 'neutral']:
+            if most_common in ['happy', 'neutral', 'calm', 'energetic']:
                 insights += "   ✅ Overall emotional state appears balanced and positive.\n"
-            elif most_common in ['sad', 'angry', 'fear']:
+            elif most_common in ['sad', 'angry', 'fear', 'disgusted', 'stressed']:
                 insights += f"   ⚠️  Predominant {most_common} emotions detected.\n"
                 insights += "   💙 Consider wellness programs and support initiatives.\n"
             
@@ -285,6 +332,13 @@ Analysis: The employee was feeling {rec['emotion']} with {rec['confidence']:.1f}
                 insights += "   🎭 High emotional variety detected - showing healthy emotional range.\n"
             elif emotion_variety <= 2:
                 insights += "   📌 Limited emotional variety - emotional state appears stable.\n"
+            
+            # Confidence analysis
+            avg_confidence = sum(confidence_sum.values()) / sum(emotion_counts.values())
+            if avg_confidence >= 85:
+                insights += f"   🎯 High detection confidence ({avg_confidence:.1f}%) - emotions are clearly defined.\n"
+            elif avg_confidence < 70:
+                insights += f"   📷 Lower detection confidence ({avg_confidence:.1f}%) - consider improving lighting or camera angle.\n"
             
             return insights
             
@@ -434,10 +488,12 @@ async def startup_event():
     # Initialize RAG system
     try:
         rag_system = EmotionRAG()
-        logger.info("✓ RAG system initialized")
+        # Build initial database from existing mood records
+        rag_system.build_from_database()
+        logger.info("✓ RAG system initialized and ready")
     except Exception as e:
         logger.error(f"✗ RAG system initialization failed: {e}")
-        rag_system = None
+        rag_system = EmotionRAG()  # Still create empty instance for graceful fallback
     
     # Ensure at least one user exists to allow login
     try:
@@ -468,7 +524,7 @@ async def startup_event():
 async def root():
     """Root endpoint"""
     return {
-        "message": "HR Mood Manager API",
+        "message": "Employee Mood Analyzer API",
         "version": "1.0.0",
         "status": "running",
         "endpoints": {
@@ -1130,6 +1186,94 @@ async def rebuild_rag_database():
     except Exception as e:
         logger.error(f"Error rebuilding RAG: {e}")
         raise HTTPException(status_code=500, detail=f"Error rebuilding database: {str(e)}")
+
+# Enhanced RAG Endpoints with Gemini Support
+from rag_enhanced import rag_system as enhanced_rag, set_gemini_api_key
+
+class EnhancedRAGQueryRequest(BaseModel):
+    question: str
+    use_gemini: bool = True
+    context: dict = None
+
+@app.post("/api/rag/enhanced-query")
+async def enhanced_query(request: EnhancedRAGQueryRequest):
+    """Query with enhanced RAG using Gemini API (if available)"""
+    try:
+        result = enhanced_rag.query_with_gemini(
+            request.question, 
+            context_data=request.context
+        )
+        return {
+            "success": True,
+            "question": request.question,
+            **result
+        }
+    except Exception as e:
+        logger.error(f"Enhanced query error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/rag/suggestions")
+async def get_question_suggestions():
+    """Get smart question suggestions based on available data"""
+    try:
+        suggestions = enhanced_rag.get_question_suggestions()
+        stats = enhanced_rag.get_emotion_stats()
+        return {
+            "success": True,
+            "suggestions": suggestions,
+            "emotion_stats": stats
+        }
+    except Exception as e:
+        logger.error(f"Error getting suggestions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/rag/insights")
+async def get_formatted_insights():
+    """Get formatted insights report"""
+    try:
+        insights = enhanced_rag.get_insights()
+        return {
+            "success": True,
+            "insights": insights
+        }
+    except Exception as e:
+        logger.error(f"Error generating insights: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class GeminiConfigRequest(BaseModel):
+    api_key: str
+
+@app.post("/api/rag/configure-gemini")
+async def configure_gemini(request: GeminiConfigRequest):
+    """Configure Gemini API key"""
+    try:
+        if not request.api_key or not request.api_key.strip():
+            raise HTTPException(status_code=400, detail="API key cannot be empty")
+        
+        success = set_gemini_api_key(request.api_key.strip())
+        if success:
+            return {
+                "success": True,
+                "message": "Gemini API configured successfully",
+                "gemini_enabled": True
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Failed to configure Gemini API",
+                "gemini_enabled": False,
+                "error": "Could not import google-generativeai. Install with: pip install google-generativeai"
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error configuring Gemini: {e}")
+        return {
+            "success": False,
+            "message": f"Configuration failed: {str(e)}",
+            "gemini_enabled": False,
+            "error": str(e)
+        }
 
 if __name__ == "__main__":
     import uvicorn

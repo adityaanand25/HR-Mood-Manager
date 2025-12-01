@@ -116,7 +116,7 @@ export default function UserRegistration({ onSuccess, onCancel, isAdmin = false 
           Register New User
         </CardTitle>
         <CardDescription className="text-gray-600">
-          Create a new user account for the HR Mood Manager system
+          Create a new user account for the Employee Mood Analyzer system
         </CardDescription>
       </CardHeader>
 

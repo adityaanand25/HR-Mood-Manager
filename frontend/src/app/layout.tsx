@@ -18,15 +18,19 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HR Mood Manager - Employee Wellness Platform",
+  title: "Employee Mood Analyzer - Employee Wellness Platform",
   description: "Advanced AI-powered employee wellness and sentiment analysis platform for modern organizations",
   keywords: ["HR", "Employee Wellness", "Mood Tracking", "AI", "Sentiment Analysis"],
-  authors: [{ name: "HR Mood Manager Team" }],
+  authors: [{ name: "Employee Mood Analyzer Team" }],
   manifest: "/manifest.json",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "HR Mood Manager",
+    title: "Employee Mood Analyzer",
   },
 };
 

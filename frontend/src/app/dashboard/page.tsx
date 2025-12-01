@@ -130,7 +130,7 @@ export default function DashboardPage() {
                 <Brain className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">HR Mood Manager</h1>
+                <h1 className="text-xl font-bold text-white">Employee Mood Analyzer</h1>
                 <p className="text-sm text-slate-400">Employee Wellness Platform</p>
               </div>
             </div>

@@ -42,6 +42,35 @@ class EmotionDetector:
         self.history = []
         self.load()
     
+    def get_database_records(self):
+        """Load mood records from database"""
+        try:
+            from database import get_mood_records
+            db_records = get_mood_records()
+            
+            # Convert database records to history format
+            history = []
+            for record in db_records:
+                history.append({
+                    'time': record['timestamp'],
+                    'emotion': record['emotion'],
+                    'scores': {
+                        'happy': record['confidence'] if record['emotion'] == 'happy' else 0,
+                        'sad': record['confidence'] if record['emotion'] == 'sad' else 0,
+                        'angry': record['confidence'] if record['emotion'] == 'angry' else 0,
+                        'fear': record['confidence'] if record['emotion'] == 'fear' else 0,
+                        'surprise': record['confidence'] if record['emotion'] == 'surprise' else 0,
+                        'disgust': record['confidence'] if record['emotion'] == 'disgust' else 0,
+                        'neutral': record['confidence'] if record['emotion'] == 'neutral' else 0
+                    },
+                    'path': 'database'
+                })
+            
+            return history
+        except Exception as e:
+            print(f"⚠️  Could not load from database: {e}")
+            return []
+    
     def detect(self, image_path: str) -> Optional[Dict]:
         """Detect emotion from image"""
         try:
@@ -134,13 +163,21 @@ class EmotionDetector:
             json.dump(self.history, f, indent=2)
     
     def load(self):
-        """Load history from JSON"""
+        """Load history from database first, then JSON as fallback"""
+        # Try loading from database
+        db_history = self.get_database_records()
+        if db_history:
+            self.history = db_history
+            print(f"[DB] Loaded {len(self.history)} records from database")
+            return
+        
+        # Fallback to JSON
         try:
             with open(self.history_file, 'r') as f:
                 self.history = json.load(f)
-            print(f"📂 Loaded {len(self.history)} records")
+            print(f"[JSON] Loaded {len(self.history)} records from JSON")
         except FileNotFoundError:
-            print("📂 Starting fresh")
+            print("[INIT] Starting fresh")
             self.history = []
     
     def get_stats(self) -> Optional[Dict]:
@@ -195,13 +232,18 @@ class EmotionDetector:
 class EmotionRAG:
     def __init__(self):
         print("🤖 Loading AI model...")
-        self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        try:
+            self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        except Exception as e:
+            print(f"⚠️  Could not load embedder (offline mode): {e}")
+            self.embedder = None
+        
         self.chroma = chromadb.PersistentClient(path=Config.DB_DIR)
         self.collection = None
         print("✅ AI model ready")
     
     def build(self, history: List[Dict]) -> bool:
-        """Build vector database"""
+        """Build vector database from history"""
         if not history:
             print("❌ No history to build from")
             return False
@@ -223,7 +265,12 @@ class EmotionRAG:
         metas = []
         
         for i, rec in enumerate(history):
-            scores = ", ".join([f"{k}: {v:.1f}%" for k, v in rec['scores'].items()])
+            # Handle both old format (scores dict) and new format (just emotion)
+            if isinstance(rec.get('scores'), dict):
+                scores = ", ".join([f"{k}: {v:.1f}%" for k, v in rec['scores'].items()])
+            else:
+                scores = f"{rec['emotion']}: 100%"
+            
             time_str = rec['time'][:19].replace('T', ' ')
             
             text = f"""Record {i+1} at {time_str}
@@ -239,8 +286,12 @@ Analysis: The person was feeling {rec['emotion']} at this time."""
                 'id': i
             })
         
-        # Add to collection
-        self.collection.add(documents=docs, ids=ids, metadatas=metas)
+        # Add to collection if embedder available, otherwise just store metadata
+        if self.embedder:
+            self.collection.add(documents=docs, ids=ids, metadatas=metas)
+        else:
+            # Fallback: store without embeddings
+            self.collection.add(documents=docs, ids=ids, metadatas=metas)
         
         print(f"✅ Database ready with {len(docs)} records")
         return True

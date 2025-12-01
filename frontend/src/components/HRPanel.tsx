@@ -6,9 +6,10 @@ import { authApi, historyApi, User, MoodHistoryEntry, MoodHistoryRequest } from 
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { UserPlus, Save, RefreshCw, Users } from 'lucide-react';
+import { UserPlus, Save, RefreshCw, Users, Brain } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 const MOOD_OPTIONS = [
   'Excellent', 'Good', 'Average', 'Poor', 'Terrible',
@@ -18,6 +19,7 @@ const MOOD_OPTIONS = [
 
 export const HRPanel: React.FC = () => {
   const { user } = useAuth();
+  const router = useRouter();
   const [employees, setEmployees] = useState<User[]>([]);
   const [moodHistory, setMoodHistory] = useState<MoodHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -276,6 +278,28 @@ export const HRPanel: React.FC = () => {
             </div>
           )}
         </CardContent>
+      </Card>
+
+      {/* AI Insights Access */}
+      <Card className="glass-purple p-8 hover-lift shadow-2xl border-2 border-white/20">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg">
+              <Brain className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-white">AI Insights & Analytics</h3>
+              <p className="text-sm text-slate-400">Get AI-powered analysis of employee emotions and trends</p>
+            </div>
+          </div>
+          <Button
+            onClick={() => router.push('/insights')}
+            className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:shadow-lg transition-all"
+          >
+            <Brain className="h-4 w-4" />
+            Open AI Insights
+          </Button>
+        </div>
       </Card>
     </div>
   );

@@ -1,6 +1,6 @@
-# HR Mood Manager Frontend
+# Employee Mood Analyzer Frontend
 
-A modern, responsive Next.js frontend for the HR Mood Manager system that provides real-time emotion detection, mood tracking, and comprehensive analytics.
+A modern, responsive Next.js frontend for the Employee Mood Analyzer system that provides real-time emotion detection, mood tracking, and comprehensive analytics.
 
 ## Features
 

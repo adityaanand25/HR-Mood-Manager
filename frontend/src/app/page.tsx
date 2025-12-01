@@ -50,7 +50,7 @@ export default function HomePage() {
                 <Brain className="h-5 w-5 text-white" />
               </div>
               <div>
-                <span className="text-xl font-bold text-white">HR Mood Manager</span>
+                <span className="text-xl font-bold text-white">Employee Mood Analyzer</span>
                 <p className="text-xs text-slate-400">Employee Wellness Platform</p>
               </div>
             </div>
@@ -254,7 +254,7 @@ export default function HomePage() {
                 <Brain className="h-5 w-5 text-white" />
               </div>
               <div>
-                <span className="text-lg font-bold text-white">HR Mood Manager</span>
+                <span className="text-lg font-bold text-white">Employee Mood Analyzer</span>
                 <p className="text-xs text-slate-400">© 2024 All rights reserved</p>
               </div>
             </div>
